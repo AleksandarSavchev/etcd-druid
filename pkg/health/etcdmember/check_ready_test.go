@@ -21,6 +21,7 @@ import (
 	"time"
 
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
+	"github.com/go-logr/logr"
 
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/test"
@@ -54,6 +55,7 @@ var _ = Describe("ReadyCheck", func() {
 			unknownThreshold, notReadyThreshold time.Duration
 			now                                 time.Time
 			check                               Checker
+			logger                              logr.Logger
 
 			member1Name string
 			member1ID   *string
@@ -68,7 +70,8 @@ var _ = Describe("ReadyCheck", func() {
 			unknownThreshold = 300 * time.Second
 			notReadyThreshold = 60 * time.Second
 			now, _ = time.Parse(time.RFC3339, "2021-06-01T00:00:00Z")
-			check = ReadyCheck(cl, log.NullLogger{}, controllersconfig.EtcdCustodianController{
+			logger = log.Log.WithName("Reconcile-Test-Controller")
+			check = ReadyCheck(cl, logger, controllersconfig.EtcdCustodianController{
 				EtcdMember: controllersconfig.EtcdMemberConfig{
 					EtcdMemberNotReadyThreshold: notReadyThreshold,
 					EtcdMemberUnknownThreshold:  unknownThreshold,

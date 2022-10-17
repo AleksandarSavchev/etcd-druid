@@ -20,7 +20,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/gardener/gardener/pkg/controllerutils"
 	"github.com/gardener/gardener/pkg/controllerutils/mapper"
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/go-logr/logr"
@@ -32,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -139,45 +137,36 @@ func (ec *EtcdCustodian) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 func (ec *EtcdCustodian) updateEtcdStatus(ctx context.Context, logger logr.Logger, etcd *druidv1alpha1.Etcd, sts *appsv1.StatefulSet) error {
 	logger.Info("Updating etcd status with statefulset information")
-	var (
-		conditions = etcd.Status.Conditions
-		members    = etcd.Status.Members
-	)
 
-	return controllerutils.TryUpdateStatus(ctx, retry.DefaultBackoff, ec.Client, etcd, func() error {
-		etcd.Status.Conditions = conditions
-		etcd.Status.Members = members
+	// Bootstrap is a special case which is handled by the etcd controller.
+	if !inBootstrap(etcd) && len(etcd.Status.Members) != 0 {
+		etcd.Status.ClusterSize = pointer.Int32Ptr(int32(len(etcd.Status.Members)))
+	}
 
-		// Bootstrap is a special case which is handled by the etcd controller.
-		if !inBootstrap(etcd) && len(members) != 0 {
-			etcd.Status.ClusterSize = pointer.Int32Ptr(int32(len(members)))
+	if sts != nil {
+		etcd.Status.Etcd = &druidv1alpha1.CrossVersionObjectReference{
+			APIVersion: sts.APIVersion,
+			Kind:       sts.Kind,
+			Name:       sts.Name,
 		}
 
-		if sts != nil {
-			etcd.Status.Etcd = &druidv1alpha1.CrossVersionObjectReference{
-				APIVersion: sts.APIVersion,
-				Kind:       sts.Kind,
-				Name:       sts.Name,
-			}
+		ready := utils.CheckStatefulSet(etcd.Spec.Replicas, sts) == nil
 
-			ready := utils.CheckStatefulSet(etcd.Spec.Replicas, sts) == nil
-
-			// To be changed once we have multiple replicas.
-			etcd.Status.CurrentReplicas = sts.Status.CurrentReplicas
-			etcd.Status.ReadyReplicas = sts.Status.ReadyReplicas
-			etcd.Status.UpdatedReplicas = sts.Status.UpdatedReplicas
-			etcd.Status.Ready = &ready
-			logger.Info(fmt.Sprintf("ETCD status updated for statefulset current replicas: %v, ready replicas: %v, updated replicas: %v", sts.Status.CurrentReplicas, sts.Status.ReadyReplicas, sts.Status.UpdatedReplicas))
-			return nil
-		}
-
+		// To be changed once we have multiple replicas.
+		etcd.Status.CurrentReplicas = sts.Status.CurrentReplicas
+		etcd.Status.ReadyReplicas = sts.Status.ReadyReplicas
+		etcd.Status.UpdatedReplicas = sts.Status.UpdatedReplicas
+		etcd.Status.Ready = &ready
+		logger.Info(fmt.Sprintf("ETCD status updated for statefulset current replicas: %v, ready replicas: %v, updated replicas: %v", sts.Status.CurrentReplicas, sts.Status.ReadyReplicas, sts.Status.UpdatedReplicas))
+	} else {
 		etcd.Status.CurrentReplicas = 0
 		etcd.Status.ReadyReplicas = 0
 		etcd.Status.UpdatedReplicas = 0
 
 		etcd.Status.Ready = pointer.BoolPtr(false)
-		return nil
-	})
+	}
+
+	return ec.Client.Update(ctx, etcd)
 }
 
 func calculatePDBminAvailable(etcd *druidv1alpha1.Etcd) int {
@@ -267,15 +256,19 @@ func (ec *EtcdCustodian) SetupWithManager(ctx context.Context, mgr ctrl.Manager,
 		MaxConcurrentReconciles: workers,
 	})
 
-	return builder.
+	c, err := builder.
 		For(
 			&druidv1alpha1.Etcd{},
 			ctrlbuilder.WithPredicates(druidpredicates.EtcdReconciliationFinished(ignoreOperationAnnotation))).
 		Owns(&coordinationv1.Lease{}).
-		Watches(
-			&source.Kind{Type: &appsv1.StatefulSet{}},
-			mapper.EnqueueRequestsFrom(druidmapper.StatefulSetToEtcd(ctx, mgr.GetClient()), mapper.UpdateWithNew),
-			ctrlbuilder.WithPredicates(druidpredicates.StatefulSetStatusChange()),
-		).
-		Complete(ec)
+		Build(ec)
+	if err != nil {
+		return err
+	}
+
+	return c.Watch(
+		&source.Kind{Type: &appsv1.StatefulSet{}},
+		mapper.EnqueueRequestsFrom(druidmapper.StatefulSetToEtcd(ctx, mgr.GetClient()), mapper.UpdateWithNew, mgr.GetLogger()),
+		druidpredicates.StatefulSetStatusChange(),
+	)
 }

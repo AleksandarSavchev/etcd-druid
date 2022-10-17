@@ -31,8 +31,9 @@ IMG ?= ${IMAGE_REPOSITORY}:${IMAGE_BUILD_TAG}
 #########################################
 
 TOOLS_DIR := hack/tools
-include $(REPO_ROOT)/hack/tools.mk
 include $(REPO_ROOT)/vendor/github.com/gardener/gardener/hack/tools.mk
+include $(REPO_ROOT)/hack/tools.mk
+
 
 .PHONY: revendor
 revendor:
@@ -110,7 +111,7 @@ docker-push:
 
 # Run tests
 .PHONY: test
-test: $(GINKGO) $(SETUP_ENVTEST) fmt check manifests
+test: $(GINKGO) $(SETUP_ENVTEST)
 	@"$(REPO_ROOT)/hack/test.sh" ./api/... ./controllers/... ./pkg/...
 
 .PHONY: test-cov

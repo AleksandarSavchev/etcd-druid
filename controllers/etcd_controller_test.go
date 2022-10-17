@@ -47,7 +47,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -511,13 +510,10 @@ var _ = Describe("Cron Job", func() {
 			// Deliberately update the delta lease
 			deltaLease := &coordinationv1.Lease{}
 			Eventually(func() error { return deltaLeaseIsCorrectlyReconciled(c, instance, deltaLease) }, timeout, pollingInterval).Should(BeNil())
-			err = controllerutils.TryUpdate(context.TODO(), retry.DefaultBackoff, c, deltaLease, func() error {
-				deltaLease.Spec.HolderIdentity = pointer.StringPtr("1000000")
-				renewedTime := time.Now()
-				deltaLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
-				return nil
-			})
-			Expect(err).NotTo(HaveOccurred())
+
+			deltaLease.Spec.HolderIdentity = pointer.StringPtr("1000000")
+			deltaLease.Spec.RenewTime = &metav1.MicroTime{Time: time.Now()}
+			Expect(c.Update(context.TODO(), deltaLease)).To(Succeed())
 
 			// Wait until the cron job gets the "foregroundDeletion" finalizer and remove it
 			Eventually(func() (*batchv1beta1.CronJob, error) {
@@ -526,7 +522,7 @@ var _ = Describe("Cron Job", func() {
 				}
 				return cj, nil
 			}, timeout, pollingInterval).Should(PointTo(matchFinalizer(metav1.FinalizerDeleteDependents)))
-			Expect(controllerutils.PatchRemoveFinalizers(ctx, c, cj, metav1.FinalizerDeleteDependents)).To(Succeed())
+			Expect(controllerutils.RemoveFinalizers(ctx, c, cj, metav1.FinalizerDeleteDependents)).To(Succeed())
 
 			// Wait until the cron job has been deleted
 			Eventually(func() error {
@@ -565,13 +561,10 @@ var _ = Describe("Cron Job", func() {
 			// Deliberately update the delta lease
 			deltaLease := &coordinationv1.Lease{}
 			Eventually(func() error { return deltaLeaseIsCorrectlyReconciled(c, instance, deltaLease) }, timeout, pollingInterval).Should(BeNil())
-			err = controllerutils.TryUpdate(context.TODO(), retry.DefaultBackoff, c, deltaLease, func() error {
-				deltaLease.Spec.HolderIdentity = pointer.StringPtr("1000000")
-				renewedTime := time.Now()
-				deltaLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
-				return nil
-			})
-			Expect(err).NotTo(HaveOccurred())
+
+			deltaLease.Spec.HolderIdentity = pointer.StringPtr("1000000")
+			deltaLease.Spec.RenewTime = &metav1.MicroTime{Time: time.Now()}
+			Expect(c.Update(context.TODO(), deltaLease)).To(Succeed())
 
 			Eventually(func() error { return cronJobIsCorrectlyReconciled(c, instance, cj) }, timeout, pollingInterval).Should(BeNil())
 		})
