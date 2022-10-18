@@ -114,6 +114,11 @@ docker-push:
 test: $(GINKGO) $(SETUP_ENVTEST)
 	@"$(REPO_ROOT)/hack/test.sh" ./api/... ./controllers/... ./pkg/...
 
+# Run tests
+.PHONY: testC
+testC: $(GINKGO) $(SETUP_ENVTEST)
+	@"$(REPO_ROOT)/hack/test.sh" ./controllers/...
+
 .PHONY: test-cov
 test-cov: $(GINKGO) $(SETUP_ENVTEST)
 	@TEST_COV="true" "$(REPO_ROOT)/hack/test.sh"

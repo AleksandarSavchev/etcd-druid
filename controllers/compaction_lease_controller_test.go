@@ -22,8 +22,7 @@ import (
 	"github.com/gardener/etcd-druid/pkg/utils"
 	"github.com/gardener/gardener/pkg/controllerutils"
 	"github.com/gardener/gardener/pkg/utils/test/matchers"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 	appsv1 "k8s.io/api/apps/v1"
@@ -77,7 +76,7 @@ var _ = Describe("Lease Controller", func() {
 	})
 
 	// When an ETCD resource is created, check if the associated compaction job is created with validateETCDCmpctJob
-	DescribeTable("when etcd resource is created",
+	FDescribeTable("when etcd resource is created",
 		func(name string,
 			generateEtcd func(string, string) *druidv1alpha1.Etcd,
 			validateETCDCmpctJob func(*druidv1alpha1.Etcd, *batchv1.Job)) {
@@ -112,7 +111,7 @@ var _ = Describe("Lease Controller", func() {
 			Eventually(func() error { return fullLeaseIsCorrectlyReconciled(c, instance, fullLease) }, timeout, pollingInterval).Should(BeNil())
 			fullLease.Spec.HolderIdentity = pointer.StringPtr("0")
 			fullLease.Spec.RenewTime = &metav1.MicroTime{Time: time.Now()}
-			Eventually(c.Update(context.TODO(), fullLease)).Should(Succeed())
+			Expect(c.Update(context.TODO(), fullLease)).To(Succeed())
 
 			deltaLease := &coordinationv1.Lease{}
 			Eventually(func() error { return deltaLeaseIsCorrectlyReconciled(c, instance, deltaLease) }, timeout, pollingInterval).Should(BeNil())
